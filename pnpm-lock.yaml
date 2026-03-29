@@ -164,6 +164,9 @@ importers:
       '@streams/integrations':
         specifier: workspace:*
         version: link:../integrations
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
     devDependencies:
       typescript:
         specifier: ^5.5.0
@@ -187,6 +190,9 @@ importers:
       '@streams/contracts':
         specifier: workspace:*
         version: link:../contracts
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -250,6 +256,9 @@ importers:
       '@streams/contracts':
         specifier: workspace:*
         version: link:../contracts
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
@@ -263,6 +272,9 @@ importers:
       '@streams/contracts':
         specifier: workspace:*
         version: link:../contracts
+      zod:
+        specifier: ^3.23.0
+        version: 3.25.76
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
