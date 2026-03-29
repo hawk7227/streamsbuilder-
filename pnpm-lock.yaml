@@ -57,6 +57,9 @@ importers:
       '@types/express':
         specifier: ^4.17.21
         version: 4.17.25
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.37
       tsx:
         specifier: ^4.16.0
         version: 4.21.0
@@ -140,6 +143,9 @@ importers:
         specifier: ^5.12.0
         version: 5.71.1
     devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.37
       tsx:
         specifier: ^4.16.0
         version: 4.21.0
@@ -169,6 +175,9 @@ importers:
         specifier: ^3.23.0
         version: 3.25.76
     devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.37
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
@@ -179,6 +188,9 @@ importers:
         specifier: workspace:*
         version: link:../contracts
     devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.37
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
@@ -198,6 +210,9 @@ importers:
         specifier: ^8.12.0
         version: 8.20.0
     devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.37
       '@types/pg':
         specifier: ^8.11.0
         version: 8.20.0
@@ -223,6 +238,9 @@ importers:
         specifier: ^4.7.0
         version: 4.7.1
     devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.37
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
@@ -233,6 +251,9 @@ importers:
         specifier: workspace:*
         version: link:../contracts
     devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.37
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
@@ -243,6 +264,9 @@ importers:
         specifier: workspace:*
         version: link:../contracts
     devDependencies:
+      '@types/node':
+        specifier: ^20.0.0
+        version: 20.19.37
       typescript:
         specifier: ^5.5.0
         version: 5.9.3
