@@ -3,6 +3,5 @@
   "installCommand": "corepack enable && pnpm install --frozen-lockfile",
   "buildCommand": "cd ../.. && pnpm turbo run build --filter=@streams/web...",
   "outputDirectory": ".next",
-  "framework": "nextjs",
-  "rootDirectory": "apps/web"
+  "framework": "nextjs"
 }
