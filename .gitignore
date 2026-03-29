@@ -1,0 +1,47 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+dist/
+.next/
+.turbo/
+out/
+build/
+
+# Environment — NEVER commit secrets
+.env
+.env.local
+.env.*.local
+.env.production
+
+# Test artifacts
+coverage/
+playwright-report/
+test-results/
+
+# Generated artifacts (regenerated on build)
+# public/build-report.json is seeded in repo but overwritten on build
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/settings.json
+.idea/
+*.swp
+*.swo
+
+# TypeScript incremental
+*.tsbuildinfo
+
+# pnpm
+.pnpm-debug.log
+
+# Vercel
+.vercel/
+
+# Logs
+*.log
+logs/

@@ -1,0 +1,217 @@
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: "Deploy target"
+        required: true
+        default: "production"
+        type: choice
+        options: [production, staging]
+
+concurrency:
+  group: deploy-${{ github.ref }}
+  cancel-in-progress: false  # Never cancel an in-flight deploy
+
+env:
+  NODE_VERSION: "20"
+  PNPM_VERSION: "9"
+
+jobs:
+  # ── Pre-deploy gate — CI must be green ────────────────────────────────────
+  pre-deploy-gate:
+    name: Pre-deploy Gate
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify CI workflow passed
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const runs = await github.rest.actions.listWorkflowRunsForRepo({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              head_sha: context.sha,
+              workflow_id: 'ci.yml',
+              status: 'success',
+              per_page: 1,
+            });
+            if (runs.data.total_count === 0) {
+              core.setFailed('No successful CI run found for this commit. Deploy blocked.');
+            }
+
+  # ── Secret validation ─────────────────────────────────────────────────────
+  validate-secrets:
+    name: Validate Secrets
+    runs-on: ubuntu-latest
+    needs: pre-deploy-gate
+    steps:
+      - name: Check required secrets are present
+        run: |
+          MISSING=()
+          [[ -z "${{ secrets.DATABASE_URL }}"          ]] && MISSING+=("DATABASE_URL")
+          [[ -z "${{ secrets.REDIS_URL }}"             ]] && MISSING+=("REDIS_URL")
+          [[ -z "${{ secrets.OPENAI_API_KEY }}"        ]] && MISSING+=("OPENAI_API_KEY")
+          [[ -z "${{ secrets.ADMIN_SECRET }}"          ]] && MISSING+=("ADMIN_SECRET")
+          [[ -z "${{ secrets.VERCEL_TOKEN }}"          ]] && MISSING+=("VERCEL_TOKEN")
+          [[ -z "${{ secrets.NEXT_PUBLIC_APP_URL }}"   ]] && MISSING+=("NEXT_PUBLIC_APP_URL")
+          [[ -z "${{ secrets.S3_BUCKET }}"             ]] && MISSING+=("S3_BUCKET")
+          [[ -z "${{ secrets.S3_REGION }}"             ]] && MISSING+=("S3_REGION")
+          [[ -z "${{ secrets.S3_ACCESS_KEY_ID }}"      ]] && MISSING+=("S3_ACCESS_KEY_ID")
+          [[ -z "${{ secrets.S3_SECRET_ACCESS_KEY }}"  ]] && MISSING+=("S3_SECRET_ACCESS_KEY")
+          if [[ ${#MISSING[@]} -gt 0 ]]; then
+            echo "❌ Missing secrets: ${MISSING[*]}"
+            exit 1
+          fi
+          echo "✅ All required secrets present"
+
+  # ── DB migrations ─────────────────────────────────────────────────────────
+  migrate:
+    name: Run Migrations
+    runs-on: ubuntu-latest
+    needs: validate-secrets
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: "${{ env.PNPM_VERSION }}" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply migrations
+        run: pnpm --filter @streams/db migrate
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+
+  # ── Deploy web (Vercel) ───────────────────────────────────────────────────
+  deploy-web:
+    name: Deploy Web
+    runs-on: ubuntu-latest
+    needs: migrate
+    outputs:
+      deployment_url: ${{ steps.deploy.outputs.url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: "${{ env.PNPM_VERSION }}" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm turbo run build
+        env:
+          NEXT_PUBLIC_APP_URL:    ${{ secrets.NEXT_PUBLIC_APP_URL }}
+          CI_LINT_PASSED:        "true"
+          CI_TYPECHECK_PASSED:   "true"
+          CI_TEST_PASSED:        "true"
+
+      - name: Deploy to Vercel (production)
+        id: deploy
+        run: |
+          URL=$(vercel deploy --prod --token=${{ secrets.VERCEL_TOKEN }} --yes 2>&1 | tail -1)
+          echo "url=$URL" >> $GITHUB_OUTPUT
+          echo "Deployed to: $URL"
+        working-directory: apps/web
+
+  # ── Deploy worker (Railway/Fly/Docker) ────────────────────────────────────
+  deploy-worker:
+    name: Deploy Worker
+    runs-on: ubuntu-latest
+    needs: migrate
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with: { version: "${{ env.PNPM_VERSION }}" }
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      - name: Build worker
+        run: pnpm --filter @streams/worker build
+
+      - name: Deploy worker container
+        run: |
+          # Wire to your deploy target (Railway / Fly / Docker registry)
+          # Example for Railway:
+          # railway up --service worker
+          echo "[deploy-worker] Plug in your deploy command here"
+        env:
+          DATABASE_URL:          ${{ secrets.DATABASE_URL }}
+          REDIS_URL:             ${{ secrets.REDIS_URL }}
+          OPENAI_API_KEY:        ${{ secrets.OPENAI_API_KEY }}
+          S3_BUCKET:             ${{ secrets.S3_BUCKET }}
+          S3_REGION:             ${{ secrets.S3_REGION }}
+          S3_ACCESS_KEY_ID:      ${{ secrets.S3_ACCESS_KEY_ID }}
+          S3_SECRET_ACCESS_KEY:  ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          ADMIN_SECRET:          ${{ secrets.ADMIN_SECRET }}
+          NEXT_PUBLIC_APP_URL:   ${{ secrets.NEXT_PUBLIC_APP_URL }}
+
+  # ── Post-deploy health check ──────────────────────────────────────────────
+  health-check:
+    name: Post-deploy Health Check
+    runs-on: ubuntu-latest
+    needs: [deploy-web, deploy-worker]
+    steps:
+      - name: Wait for deployment to stabilise
+        run: sleep 15
+
+      - name: Check public health endpoint
+        run: |
+          URL="${{ needs.deploy-web.outputs.deployment_url }}"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" "$URL/health")
+          if [[ "$STATUS" != "200" ]]; then
+            echo "❌ Health check failed: $URL/health returned $STATUS"
+            exit 1
+          fi
+          echo "✅ Public health check passed ($STATUS)"
+
+      - name: Check system-status endpoint (admin)
+        run: |
+          URL="${{ needs.deploy-web.outputs.deployment_url }}"
+          STATUS=$(curl -s -o /dev/null -w "%{http_code}" \
+            -H "x-admin-secret: ${{ secrets.ADMIN_SECRET }}" \
+            "$URL/api/system-status")
+          if [[ "$STATUS" != "200" ]]; then
+            echo "❌ System status returned $STATUS (degraded or down)"
+            exit 1
+          fi
+          echo "✅ System status check passed ($STATUS)"
+
+  # ── Rollback notice on failure ────────────────────────────────────────────
+  rollback-notice:
+    name: Rollback Notice
+    runs-on: ubuntu-latest
+    needs: [deploy-web, deploy-worker, health-check]
+    if: failure()
+    steps:
+      - name: Post failure notice
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const sha = context.sha.slice(0, 8);
+            const runUrl = `https://github.com/${context.repo.owner}/${context.repo.repo}/actions/runs/${context.runId}`;
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo:  context.repo.repo,
+              title: `🚨 Deploy failed — manual rollback may be required (${sha})`,
+              body: [
+                `**Deploy workflow failed** for commit \`${context.sha}\`.`,
+                '',
+                `**Run:** ${runUrl}`,
+                '',
+                '**Action required:**',
+                '1. Check the failed job above for root cause.',
+                '2. If production is degraded, revert via Vercel dashboard or `vercel rollback`.',
+                '3. For worker: redeploy the previous container tag.',
+                '4. Verify `/api/system-status` returns 200 after rollback.',
+              ].join('\n'),
+              labels: ['deploy-failure', 'urgent'],
+            });
