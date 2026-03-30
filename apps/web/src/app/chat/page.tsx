@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { Composer } from "@/components/chat/Composer";
 import { StreamRenderer } from "@/components/chat/StreamRenderer";
 import { ActivityTimeline } from "@/components/activity/ActivityTimeline";
@@ -10,8 +10,7 @@ import { createBotTurn } from "@/lib/api-client";
 import { useRunStream } from "@/lib/hooks/useRunStream";
 import type { BotRequest, RunStreamEvent } from "@streams/contracts";
 
-// Project ID — in production this comes from auth context / URL param
-const PROJECT_ID = "00000000-0000-0000-0000-000000000001";
+const DEFAULT_PROJECT_ID = "00000000-0000-0000-0000-000000000001";
 
 interface Message {
   id: string;
@@ -23,6 +22,7 @@ interface Message {
 type PanelView = "activity" | "files" | "preview";
 
 export default function ChatPage() {
+  const [projectId] = useState<string>(DEFAULT_PROJECT_ID);
   const [messages, setMessages] = useState<Message[]>([]);
   const [conversationId, setConversationId] = useState<string | undefined>();
   const [activeRunId, setActiveRunId] = useState<string | null>(null);
@@ -30,21 +30,27 @@ export default function ChatPage() {
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [panel, setPanel] = useState<PanelView>("activity");
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  // Collect all SSE events for the activity timeline
+  // Auto-scroll on new messages
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
   const handleStreamEvent = useCallback((event: RunStreamEvent) => {
     setEvents((prev) => [...prev, event]);
 
-    // Extract preview URL from artifact events
     if (event.type === "artifact_ready" && event.artifactType === "preview") {
       setPreviewUrl(event.url);
       setPanel("preview");
     }
 
-    // Mark run as done
     if (event.type === "response_completed" || event.type === "run_failed") {
       setSubmitting(false);
+      if (event.type === "run_failed") {
+        setError(event.error);
+      }
     }
   }, []);
 
@@ -54,6 +60,7 @@ export default function ChatPage() {
     async (req: Omit<BotRequest, "projectId" | "conversationId">) => {
       if (submitting) return;
 
+      setError(null);
       const userMsgId = crypto.randomUUID();
       setMessages((prev) => [
         ...prev,
@@ -65,7 +72,7 @@ export default function ChatPage() {
       try {
         const result = await createBotTurn({
           ...req,
-          projectId: PROJECT_ID,
+          projectId,
           conversationId,
         });
 
@@ -77,30 +84,41 @@ export default function ChatPage() {
           ...prev,
           { id: assistantMsgId, role: "assistant", content: "", runId: result.runId },
         ]);
-
-        // Auto-scroll
-        setTimeout(() => {
-          bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-        }, 100);
       } catch (err) {
         setSubmitting(false);
+        const msg = err instanceof Error ? err.message : "Request failed";
+        setError(msg);
         setMessages((prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
             role: "assistant",
-            content: `Error: ${err instanceof Error ? err.message : "Request failed"}`,
+            content: `Error: ${msg}`,
           },
         ]);
       }
     },
-    [submitting, conversationId]
+    [submitting, conversationId, projectId]
   );
 
   return (
     <div style={styles.shell}>
       {/* Left: Chat column */}
       <div style={styles.chatColumn}>
+        {/* Error banner */}
+        {error && (
+          <div style={styles.errorBanner} role="alert">
+            <span>{error}</span>
+            <button
+              type="button"
+              style={styles.errorDismiss}
+              onClick={() => { setError(null); }}
+            >
+              ✕
+            </button>
+          </div>
+        )}
+
         {/* Message list */}
         <div style={styles.messages}>
           {messages.length === 0 && (
@@ -134,7 +152,7 @@ export default function ChatPage() {
         {/* Composer */}
         <div style={styles.composerWrapper}>
           <Composer
-            projectId={PROJECT_ID}
+            projectId={projectId}
             conversationId={conversationId}
             disabled={submitting}
             onSubmit={(req) => { void handleSubmit(req); }}
@@ -144,13 +162,12 @@ export default function ChatPage() {
 
       {/* Right: Side panel */}
       <div style={styles.sidePanel}>
-        {/* Panel tabs */}
         <div style={styles.panelTabs}>
           {(["activity", "files", "preview"] as PanelView[]).map((tab) => (
             <button
               key={tab}
               type="button"
-              onClick={() => setPanel(tab)}
+              onClick={() => { setPanel(tab); }}
               style={{
                 ...styles.panelTab,
                 borderBottom: panel === tab
@@ -166,13 +183,12 @@ export default function ChatPage() {
           ))}
         </div>
 
-        {/* Panel content */}
         <div style={styles.panelContent}>
           {panel === "activity" && <ActivityTimeline events={events} />}
 
           {panel === "files" && (
             <FileUpload
-              projectId={PROJECT_ID}
+              projectId={projectId}
               onUploaded={(fileId) => {
                 console.log("[chat] file uploaded:", fileId);
               }}
@@ -181,7 +197,7 @@ export default function ChatPage() {
 
           {panel === "preview" && (
             <PreviewPanel
-              projectId={PROJECT_ID}
+              projectId={projectId}
               runId={activeRunId}
               previewUrl={previewUrl}
               onPreviewRequested={(streamUrl) => {
@@ -208,6 +224,25 @@ const styles = {
     flexDirection: "column" as const,
     minWidth: 0,
     borderRight: "1px solid var(--color-border)",
+  },
+  errorBanner: {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "space-between",
+    padding: "var(--spacing-3) var(--spacing-6)",
+    background: "var(--color-err-bg)",
+    borderBottom: "1px solid var(--color-err-border)",
+    color: "var(--color-err-text)",
+    fontSize: "var(--font-size-sm)",
+    flexShrink: 0,
+  },
+  errorDismiss: {
+    background: "none",
+    border: "none",
+    color: "var(--color-err-text)",
+    cursor: "pointer",
+    fontSize: "var(--font-size-sm)",
+    padding: "0 var(--spacing-1)",
   },
   messages: {
     flex: 1,
@@ -266,6 +301,7 @@ const styles = {
     borderTop: "1px solid var(--color-border)",
     display: "flex",
     justifyContent: "center",
+    flexShrink: 0,
   },
   sidePanel: {
     width: "400px",
@@ -278,6 +314,7 @@ const styles = {
     display: "flex",
     borderBottom: "1px solid var(--color-border)",
     padding: "0 var(--spacing-4)",
+    flexShrink: 0,
   },
   panelTab: {
     padding: "var(--spacing-4) var(--spacing-4)",

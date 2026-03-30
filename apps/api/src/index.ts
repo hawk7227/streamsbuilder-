@@ -1,12 +1,5 @@
 /**
  * apps/api — Express API server
- *
- * Blockers resolved:
- * 1. SSE streaming lives here, not in apps/web — apps/web consumes, apps/api emits.
- * 2. No long-running work in HTTP — all runtime jobs enqueued immediately.
- * 3. /api/system-status wired and enforced.
- *
- * env validated on boot via @streams/contracts — process exits if invalid.
  */
 
 import express from "express";
@@ -21,14 +14,13 @@ import type { SystemStatus } from "@streams/contracts";
 import { readFileSync } from "fs";
 import { join } from "path";
 import type { Request, Response } from "express";
+import { eq } from "drizzle-orm";
 
-// ─── Boot — validate env first, fail hard ────────────────────────────────────
+// ─── Boot ─────────────────────────────────────────────────────────────────────
 
 const env = validateEnv();
 const integrations = createIntegrations(env);
 bootDb(env);
-
-// ─── Redis pub/sub for run event streaming ────────────────────────────────────
 
 const RUN_CHANNEL = (runId: string) => `run:${runId}:events`;
 
@@ -38,7 +30,6 @@ const app = express();
 app.use(express.json({ limit: "1mb" }));
 app.use("/api", createRoutes(integrations));
 
-// Admin auth middleware
 function requireAdmin(req: Request, res: Response, next: () => void): void {
   const secret = req.headers["x-admin-secret"];
   if (secret !== env.ADMIN_SECRET) {
@@ -58,30 +49,82 @@ app.post("/api/bot", async (req: Request, res: Response) => {
   }
 
   const request = parse.data;
+  const db = getDb();
+  const { schema } = await import("@streams/db");
+
+  // Ensure project exists — create default if missing
+  let project = await db.query.projects.findFirst({
+    where: eq(schema.projects.id, request.projectId),
+  });
+
+  if (!project) {
+    const [created] = await db.insert(schema.projects).values({
+      id: request.projectId,
+      name: "Default Project",
+      slug: `project-${request.projectId.slice(0, 8)}`,
+    }).returning();
+    project = created;
+  }
+
+  // Ensure conversation exists
+  let conversation = request.conversationId
+    ? await db.query.conversations.findFirst({
+        where: eq(schema.conversations.id, request.conversationId),
+      })
+    : null;
+
+  if (!conversation) {
+    const [created] = await db.insert(schema.conversations).values({
+      id: request.conversationId ?? randomUUID(),
+      projectId: request.projectId,
+      title: request.userMessage.slice(0, 80),
+    }).returning();
+    conversation = created;
+  }
+
+  // Insert user message
+  const [userMessage] = await db.insert(schema.messages).values({
+    conversationId: conversation.id,
+    role: "user",
+    contentJson: { text: request.userMessage },
+  }).returning();
+
   const runId = randomUUID();
-  const conversationId = request.conversationId ?? randomUUID();
   const classification = classifyRequest(request.userMessage);
   const mode = resolveRunMode(request, classification);
 
-  // Persist run (placeholder — wire to DB layer)
-  await integrations.redis.set(`run:${runId}:meta`, JSON.stringify({ runId, conversationId, mode, status: "pending" }), 3600);
+  // Insert run record
+  await db.insert(schema.runs).values({
+    id: runId,
+    projectId: request.projectId,
+    conversationId: conversation.id,
+    messageId: userMessage.id,
+    mode: mode === "auto" ? "helper" : mode,
+    status: "pending",
+    model: "gpt-4o",
+  });
 
-  // Determine if this needs queue handoff (runtime/deploy modes always queue)
   const needsQueue = mode === "runtime" || mode === "deploy";
 
   if (needsQueue) {
-    // Enqueue — do NOT block HTTP
-    await integrations.redis.publish("queue:ai-runs", JSON.stringify({ runId, conversationId, request, mode }));
+    await db.update(schema.runs)
+      .set({ status: "running" })
+      .where(eq(schema.runs.id, runId));
+
+    await integrations.redis.publish(
+      "queue:ai-runs",
+      JSON.stringify({ runId, conversationId: conversation.id, request, mode })
+    );
+
     res.status(202).json({
       runId,
-      conversationId,
+      conversationId: conversation.id,
       streamUrl: `/api/runs/${runId}/stream`,
     });
     return;
   }
 
-  // Helper/builder: stream directly from this request
-  // Vercel maxDuration must be set for this route (see route config)
+  // Helper/builder: stream directly
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
@@ -91,6 +134,10 @@ app.post("/api/bot", async (req: Request, res: Response) => {
   };
 
   sendEvent({ type: "response_started", runId });
+
+  await db.update(schema.runs)
+    .set({ status: "running", startedAt: new Date() })
+    .where(eq(schema.runs.id, runId));
 
   try {
     const tools = getToolsForMode(mode);
@@ -119,9 +166,26 @@ app.post("/api/bot", async (req: Request, res: Response) => {
       }
     }
 
+    // Persist assistant message
+    await db.insert(schema.messages).values({
+      conversationId: conversation.id,
+      role: "assistant",
+      contentJson: { text: fullText },
+    });
+
+    await db.update(schema.runs)
+      .set({ status: "completed", finishedAt: new Date() })
+      .where(eq(schema.runs.id, runId));
+
     sendEvent({ type: "response_completed", text: fullText });
   } catch (err) {
-    sendEvent({ type: "run_failed", error: err instanceof Error ? err.message : "Unknown error" });
+    const errorMessage = err instanceof Error ? err.message : "Unknown error";
+
+    await db.update(schema.runs)
+      .set({ status: "failed", finishedAt: new Date(), errorMessage })
+      .where(eq(schema.runs.id, runId));
+
+    sendEvent({ type: "run_failed", error: errorMessage });
   } finally {
     res.end();
   }
@@ -136,11 +200,6 @@ app.get("/api/runs/:id/stream", async (req: Request, res: Response) => {
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
 
-  const sendEvent = (event: object) => {
-    res.write(`data: ${JSON.stringify(event)}\n\n`);
-  };
-
-  // Subscribe to Redis pub/sub for this run
   await integrations.redis.raw.subscribe(RUN_CHANNEL(id ?? ""), (message) => {
     res.write(`data: ${message}\n\n`);
   });
@@ -149,11 +208,10 @@ app.get("/api/runs/:id/stream", async (req: Request, res: Response) => {
     void integrations.redis.raw.unsubscribe(RUN_CHANNEL(id ?? ""));
   });
 
-  // Send initial keepalive
-  sendEvent({ type: "connected", runId: id });
+  res.write(`data: ${JSON.stringify({ type: "connected", runId: id })}\n\n`);
 });
 
-// ─── GET /api/system-status (admin-only) ─────────────────────────────────────
+// ─── GET /api/system-status ───────────────────────────────────────────────────
 
 app.get("/api/system-status", requireAdmin, async (_req: Request, res: Response) => {
   let buildReport: ReturnType<typeof JSON.parse> | undefined;
@@ -173,25 +231,22 @@ app.get("/api/system-status", requireAdmin, async (_req: Request, res: Response)
       const val = await integrations.redis.get("worker:heartbeat");
       return val !== null;
     },
-    getQueueDepths: async () => {
-      // Wire to BullMQ queue metrics
-      return {};
-    },
+    getQueueDepths: async () => ({}),
     getBuildReport: async () => buildReport as SystemStatus["buildReport"],
-    version: process.env["npm_package_version"] ?? "0.0.0",
-    commit: env.NEXT_PUBLIC_APP_URL,
+    version: process.env.npm_package_version ?? "0.0.0",
+    commit: process.env.GITHUB_SHA ?? "unknown",
   });
 
   res.status(status.status === "ok" ? 200 : 503).json(status);
 });
 
-// ─── Health (public, no auth) ─────────────────────────────────────────────────
+// ─── GET /health ──────────────────────────────────────────────────────────────
 
 app.get("/health", (_req, res) => {
   res.json({ ok: true, ts: Date.now() });
 });
 
-const PORT = process.env["PORT"] ? parseInt(process.env["PORT"]) : 3001;
+const PORT = process.env.PORT ? parseInt(process.env.PORT) : 3001;
 app.listen(PORT, () => {
   console.log(`[api] listening on :${PORT}`);
 });

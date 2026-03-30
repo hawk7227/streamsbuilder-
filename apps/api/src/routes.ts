@@ -1,18 +1,5 @@
 /**
  * apps/api/src/routes.ts
- *
- * Remaining API routes — file upload, previews, test runs, deployments.
- * Imported by src/index.ts and mounted on the Express app.
- *
- * BLOCKER FIXED: Vercel maxDuration is exported per-route as a named export
- * on the Next.js route handler wrappers. For the Express server, timeout is
- * enforced at the queue level via @streams/runtime.
- *
- * Note on Vercel streaming: if apps/web consumes these via Next.js route
- * handlers instead of this Express server, each streaming route file must
- * export: export const maxDuration = 300;
- * This file documents that requirement and enforces the equivalent timeout
- * in the Express context.
  */
 
 import { Router } from "express";
@@ -24,6 +11,8 @@ import {
 } from "@streams/contracts";
 import type { Integrations } from "@streams/integrations";
 import type { Request, Response } from "express";
+import { getDb } from "./db.js";
+import { eq } from "drizzle-orm";
 
 export function createRoutes(integrations: Integrations): Router {
   const router = Router();
@@ -37,23 +26,51 @@ export function createRoutes(integrations: Integrations): Router {
       return;
     }
 
+    const db = getDb();
+    const { schema } = await import("@streams/db");
+    const { PutObjectCommand } = await import("@aws-sdk/client-s3");
+
     const fileId = randomUUID();
     const storageKey = `projects/${parse.data.projectId}/files/${fileId}/${parse.data.filename}`;
 
-    // Persist file metadata to Redis (wire to DB in production)
-    await integrations.redis.set(
-      `file:${fileId}`,
-      JSON.stringify({ ...parse.data, fileId, storageKey, createdAt: new Date().toISOString() }),
-      86400
-    );
+    // Write placeholder to S3 (client uploads directly via presigned URL in production)
+    // For now: confirm bucket accessibility and insert DB record
+    try {
+      await integrations.s3.send(
+        new PutObjectCommand({
+          Bucket: process.env.S3_BUCKET,
+          Key: storageKey,
+          ContentType: parse.data.mimeType,
+          ContentLength: 0,
+        })
+      );
+    } catch (err) {
+      console.error("[files/upload] S3 write failed:", err);
+      res.status(502).json({ error: "Storage unavailable" });
+      return;
+    }
 
-    // Enqueue file processing (virus scan, indexing, chunk embedding)
+    // Insert into DB
+    const [file] = await db.insert(schema.files).values({
+      id: fileId,
+      projectId: parse.data.projectId,
+      storageKey,
+      filename: parse.data.filename,
+      mimeType: parse.data.mimeType,
+      sizeBytes: parse.data.sizeBytes,
+    }).returning();
+
+    // Enqueue processing
     await integrations.redis.publish(
       "queue:file-processing",
       JSON.stringify({ fileId, storageKey, projectId: parse.data.projectId })
     );
 
-    res.status(201).json({ fileId, storageKey, uploadUrl: `/api/files/${fileId}/upload-url` });
+    res.status(201).json({
+      fileId: file.id,
+      storageKey,
+      uploadUrl: `/api/files/${fileId}/upload-url`,
+    });
   });
 
   // ─── POST /api/previews ───────────────────────────────────────────────────
@@ -65,7 +82,25 @@ export function createRoutes(integrations: Integrations): Router {
       return;
     }
 
+    const db = getDb();
+    const { schema } = await import("@streams/db");
+
+    // Verify run exists
+    const run = await db.query.runs.findFirst({ where: eq(schema.runs.id, runId) });
+    if (!run) {
+      res.status(404).json({ error: "Run not found" });
+      return;
+    }
+
     const previewId = randomUUID();
+
+    // Insert preview record
+    await db.insert(schema.previews).values({
+      id: previewId,
+      projectId,
+      runId,
+      status: "pending",
+    });
 
     await integrations.redis.publish(
       "queue:preview-builds",
@@ -98,17 +133,29 @@ export function createRoutes(integrations: Integrations): Router {
       return;
     }
 
+    const db = getDb();
+    const { schema } = await import("@streams/db");
+
+    const run = await db.query.runs.findFirst({ where: eq(schema.runs.id, runId) });
+    if (!run) {
+      res.status(404).json({ error: "Run not found" });
+      return;
+    }
+
     const testRunId = randomUUID();
+    const testCommand = command ?? "pnpm test";
+
+    await db.insert(schema.testRuns).values({
+      id: testRunId,
+      projectId,
+      runId,
+      status: "pending",
+      command: testCommand,
+    });
 
     await integrations.redis.publish(
       "queue:test-runs",
-      JSON.stringify({
-        testRunId,
-        projectId,
-        runId,
-        command: command ?? "pnpm test",
-        projectDir: `/tmp/projects/${projectId}`,
-      })
+      JSON.stringify({ testRunId, projectId, runId, command: testCommand, projectDir: `/tmp/projects/${projectId}` })
     );
 
     const event: RunStreamEvent = {
@@ -131,19 +178,30 @@ export function createRoutes(integrations: Integrations): Router {
       return;
     }
 
-    const deployId = randomUUID();
+    const db = getDb();
+    const { schema } = await import("@streams/db");
     const { projectId, runId, provider, environment } = parse.data;
+
+    const run = await db.query.runs.findFirst({ where: eq(schema.runs.id, runId) });
+    if (!run) {
+      res.status(404).json({ error: "Run not found" });
+      return;
+    }
+
+    const deployId = randomUUID();
+
+    await db.insert(schema.deployments).values({
+      id: deployId,
+      projectId,
+      runId,
+      provider,
+      environment,
+      status: "pending",
+    });
 
     await integrations.redis.publish(
       "queue:deploy-runs",
-      JSON.stringify({
-        deployId,
-        projectId,
-        runId,
-        provider,
-        environment,
-        projectDir: `/tmp/projects/${projectId}`,
-      })
+      JSON.stringify({ deployId, projectId, runId, provider, environment, projectDir: `/tmp/projects/${projectId}` })
     );
 
     const event: RunStreamEvent = {
@@ -159,18 +217,3 @@ export function createRoutes(integrations: Integrations): Router {
 
   return router;
 }
-
-// ─── Vercel maxDuration — MUST be set on Next.js route files that stream ──────
-//
-// When migrating /api/bot and /api/runs/:id/stream to Next.js App Router:
-//
-//   // apps/web/src/app/api/bot/route.ts
-//   export const maxDuration = 300;   ← required, streaming will silently timeout at 10s without this
-//
-//   // apps/web/src/app/api/runs/[id]/stream/route.ts
-//   export const maxDuration = 300;
-//
-// This is a hard requirement on Vercel Pro/Enterprise plans.
-// Vercel Hobby plan max is 60s — use Railway/Fly for the API on Hobby.
-//
-export const VERCEL_MAX_DURATION = 300;
