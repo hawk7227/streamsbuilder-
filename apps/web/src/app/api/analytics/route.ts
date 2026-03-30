@@ -94,7 +94,7 @@ export async function GET() {
 
     entries.forEach((entry) => {
       if (entry.type && distributionCounts[entry.type] !== undefined) {
-        distributionCounts[entry.type] += 1;
+        distributionCounts[entry.type] = (distributionCounts[entry.type] ?? 0) + 1;
       }
     });
   }

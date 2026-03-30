@@ -131,6 +131,7 @@ async function parseXlsx(buffer: Buffer): Promise<ParseResult> {
     let fullText = "";
     for (const sheetName of workbook.SheetNames) {
       const sheet = workbook.Sheets[sheetName];
+      if (!sheet) continue;
       const csv = XLSX.utils.sheet_to_csv(sheet);
       sheets[sheetName] = csv;
       fullText += `\n## Sheet: ${sheetName}\n${csv}`;

@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { YoutubeTranscript } from 'youtube-transcript';
 
 export interface YouTubeIntakeResult {

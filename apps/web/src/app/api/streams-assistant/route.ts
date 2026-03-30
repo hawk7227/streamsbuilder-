@@ -71,7 +71,11 @@ async function executeTool(name: string, args: Record<string,unknown>, ctx: Full
         const d = await r.json() as {data?:{id:string;status:string;output_url?:string};error?:string};
         return d.error?`Error: ${d.error}`:JSON.stringify({status:d.data?.status,url:d.data?.output_url,id:d.data?.id});
       }
-      case "run_pipeline": return JSON.stringify({action:"run_pipeline",message:"Triggered via UI callback"});
+      case "run_pipeline": {
+        const r = await fetch(`${base}/api/pipeline/run`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"runPipeline",payload:args.payload??ctx})});
+        const d = await r.json() as Record<string,unknown>;
+        return JSON.stringify(d);
+      }
       case "run_step": {
         const r = await fetch(`${base}/api/pipeline/run-node`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:args.stepId,data:args.data??{},context:ctx})});
         return JSON.stringify(await r.json());

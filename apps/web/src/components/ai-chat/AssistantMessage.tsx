@@ -24,7 +24,7 @@ function splitCodeFence(text: string): Array<{ type: "text" | "code"; value: str
   let match: RegExpExecArray | null;
   while ((match = regex.exec(text))) {
     if (match.index > cursor) parts.push({ type: "text", value: text.slice(cursor, match.index) });
-    parts.push({ type: "code", language: match[1], value: match[2].trimEnd() });
+    parts.push({ type: "code", language: match[1] ?? '', value: (match[2] ?? '').trimEnd() });
     cursor = regex.lastIndex;
   }
   if (cursor < text.length) parts.push({ type: "text", value: text.slice(cursor) });
@@ -88,7 +88,7 @@ function MarkdownLine({ line, isUser }: { line: string; isUser?: boolean }) {
   if (numMatch) return (
     <div style={{ display: "flex", gap: 8, alignItems: "flex-start", paddingLeft: 4 }}>
       <span style={{ color: isUser ? "rgba(10,12,16,0.4)" : "rgba(255,255,255,0.4)", fontSize: 12, marginTop: 3, flexShrink: 0, minWidth: 16 }}>{numMatch[1]}.</span>
-      <p style={{ fontSize: 14, lineHeight: 1.65, color, margin: 0 }}><InlineText text={numMatch[2]} /></p>
+      <p style={{ fontSize: 14, lineHeight: 1.65, color, margin: 0 }}><InlineText text={numMatch[2] ?? ''} /></p>
     </div>
   );
   return <p style={{ fontSize: 14, lineHeight: 1.65, color, margin: 0 }}><InlineText text={line} /></p>;

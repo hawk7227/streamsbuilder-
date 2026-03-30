@@ -19,7 +19,7 @@ export async function compositeAndUpload(
   copy: CopyGenerationOutput,
   intake: IntakeBrief,
 ): Promise<string> {
-  const primary = copy.variants[0];
+  const primary = copy.variants[0]!
 
   const governance = {
     pipelineType: "telehealth" as const,

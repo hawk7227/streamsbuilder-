@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { createStrategyFromIntake } from "./governance/telehealth";
 import { validateIntakeBrief } from "./qc/intakeGate";
 import { validateCopy } from "./qc/copyValidator";

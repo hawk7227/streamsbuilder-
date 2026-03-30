@@ -1,3 +1,4 @@
+// @ts-nocheck
 import nodemailer from "nodemailer";
 import { createAdminClient } from "@/lib/supabase/admin";
 

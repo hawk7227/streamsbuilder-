@@ -36,8 +36,8 @@ export function selectBestT2VCandidate(
 
   return {
     accepted: true,
-    acceptedCandidate: best.candidate,
-    acceptedScore: best.score,
+    acceptedCandidate: best!.candidate,
+    acceptedScore: best!.score,
     rejectedCandidates: rejected,
     attempts: scored.length,
   };

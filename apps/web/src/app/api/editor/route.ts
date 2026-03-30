@@ -41,7 +41,7 @@ function extractReturnBlock(src: string): string {
 
   for (let i = 0; i < lines.length; i++) {
     // Match `  return (` with exactly 2 spaces (top-level component return)
-    if (/^  return\s*\(/.test(lines[i])) {
+    if (/^  return\s*\(/.test(lines[i] ?? '')) {
       lastReturnLine = i;
     }
   }
@@ -50,7 +50,7 @@ function extractReturnBlock(src: string): string {
     // Fallback: find any return (
     const m = src.match(/return\s*\(\s*([\s\S]+)/);
     if (!m) return src.slice(0, 8000);
-    return m[1].slice(0, 8000);
+    return (m[1] ?? src).slice(0, 8000);
   }
 
   // Extract from that line forward, find balanced parens
