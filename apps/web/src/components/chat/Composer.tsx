@@ -7,7 +7,7 @@ type RunMode = BotRequest["mode"];
 
 interface ComposerProps {
   projectId: string;
-  conversationId?: string;
+  conversationId?: string | undefined;
   disabled?: boolean;
   onSubmit: (req: Omit<BotRequest, "projectId" | "conversationId">) => void;
 }
