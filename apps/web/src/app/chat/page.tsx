@@ -137,7 +137,7 @@ export default function ChatPage() {
             projectId={PROJECT_ID}
             conversationId={conversationId}
             disabled={submitting}
-            onSubmit={(req) => void handleSubmit(req)}
+            onSubmit={(req) => { void handleSubmit(req); }}
           />
         </div>
       </div>

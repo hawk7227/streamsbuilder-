@@ -1,17 +1,9 @@
-/**
- * apps/web/src/app/api/runs/[id]/stream/route.ts
- *
- * SSE proxy — pipes the upstream Redis pub/sub stream to the browser client.
- * maxDuration=300 is MANDATORY. Without it, Vercel closes the SSE connection
- * at 10 seconds, silently killing in-progress run streams.
- */
-
 export const maxDuration = 300;
 export const runtime = "nodejs";
 
-import { NextRequest } from "next/server";
+import type { NextRequest } from "next/server";
 
-const API_BASE = process.env["API_INTERNAL_URL"] ?? "http://localhost:3001";
+const API_BASE = process.env.API_INTERNAL_URL ?? "http://localhost:3001";
 
 export async function GET(
   _req: NextRequest,
@@ -25,10 +17,10 @@ export async function GET(
 
   return new Response(upstream.body, {
     headers: {
-      "Content-Type":  "text/event-stream",
+      "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
-      "Connection":    "keep-alive",
-      "X-Accel-Buffering": "no", // Disable nginx/Vercel buffering
+      "Connection": "keep-alive",
+      "X-Accel-Buffering": "no",
     },
   });
 }
