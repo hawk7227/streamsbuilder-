@@ -16,7 +16,7 @@ interface UploadState {
 }
 
 const MAX_SIZE_BYTES = 100 * 1024 * 1024; // 100MB — mirrors contracts
-const ALLOWED_MIME_TYPES = new Set([
+const _ALLOWED_MIME_TYPES = new Set([
   "text/plain", "text/markdown", "text/typescript", "text/javascript",
   "application/json", "application/pdf", "image/png", "image/jpeg",
   "application/zip", "application/octet-stream",

@@ -20,7 +20,7 @@ const MODES: { value: RunMode; label: string; hint: string }[] = [
   { value: "deploy",  label: "Deploy",  hint: "Preflight, CI gates, release" },
 ];
 
-export function Composer({ projectId, conversationId, disabled = false, onSubmit }: ComposerProps) {
+export function Composer({ projectId: _projectId, conversationId: _conversationId, disabled = false, onSubmit }: ComposerProps) {
   const [text, setText] = useState("");
   const [mode, setMode] = useState<RunMode>("auto");
   const [showModes, setShowModes] = useState(false);
