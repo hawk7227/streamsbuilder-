@@ -9,6 +9,7 @@ import { PreviewPanel } from "@/components/preview/PreviewPanel";
 import { createBotTurn } from "@/lib/api-client";
 import { useRunStream } from "@/lib/hooks/useRunStream";
 import type { BotRequest, RunStreamEvent } from "@streams/contracts";
+import AIAssistant from "@/components/dashboard/AIAssistant";
 
 const DEFAULT_PROJECT_ID = "00000000-0000-0000-0000-000000000001";
 
@@ -207,6 +208,8 @@ export default function ChatPage() {
           )}
         </div>
       </div>
+      {/* AIAssistant floater — bottom-right overlay, Supabase-backed */}
+      <AIAssistant context={{ projectId }} />
     </div>
   );
 }
@@ -331,3 +334,8 @@ const styles = {
     padding: "var(--spacing-5)",
   },
 } as const;
+
+// ─── AIAssistant floater is appended below the existing chat UI ───────────────
+// It mounts as a floating overlay — bottom-right — and uses its own
+// Supabase-backed routes (/api/ai-assistant, /api/conversations, etc.)
+// The existing chat page, Composer, StreamRenderer, etc. are untouched.
