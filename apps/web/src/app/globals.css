@@ -158,3 +158,8 @@ button, [role="button"] {
     transition-duration: 0.01ms !important;
   }
 }
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
