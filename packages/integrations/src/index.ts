@@ -81,7 +81,7 @@ function withTimeout<T>(promise: Promise<T>, ms: number, label: string): Promise
   ]);
 }
 
-// ─── OpenAI client (AI provider) ─────────────────────────────────────────────
+// ─── OpenAI client ───────────────────────────────────────────────────────────
 
 export function createOpenAIClient(env: AppEnv) {
   const client = new OpenAI({ apiKey: env.OPENAI_API_KEY, timeout: 120_000 });
@@ -98,7 +98,6 @@ export function createOpenAIClient(env: AppEnv) {
           )
         )
       ),
-
     createStreamingMessage: (params: OpenAI.Chat.ChatCompletionCreateParamsStreaming) =>
       breaker(() =>
         withTimeout(
@@ -107,7 +106,6 @@ export function createOpenAIClient(env: AppEnv) {
           "openai.stream"
         )
       ),
-
     healthCheck: () =>
       breaker(() =>
         withTimeout(
@@ -123,7 +121,13 @@ export type OpenAIIntegration = ReturnType<typeof createOpenAIClient>;
 
 // ─── S3 client ────────────────────────────────────────────────────────────────
 
-export function createS3Client(env: AppEnv) {
+export interface S3Integration {
+  raw: S3Client;
+  send: (command: Parameters<S3Client["send"]>[0]) => Promise<unknown>;
+  healthCheck: () => Promise<true>;
+}
+
+export function createS3Client(env: AppEnv): S3Integration {
   const client = new S3Client({
     region: env.S3_REGION,
     credentials: {
@@ -136,13 +140,13 @@ export function createS3Client(env: AppEnv) {
 
   return {
     raw: client,
-    send: <T>(command: Parameters<typeof client.send>[0]) =>
+    send: (command: Parameters<S3Client["send"]>[0]) =>
       breaker(() =>
         withRetry(() =>
-          withTimeout(client.send(command) as Promise<T>, 30_000, "s3.send")
+          withTimeout(client.send(command), 30_000, "s3.send")
         )
       ),
-    healthCheck: async () => {
+    healthCheck: async (): Promise<true> => {
       const { HeadBucketCommand } = await import("@aws-sdk/client-s3");
       return breaker(() =>
         withTimeout(
@@ -155,14 +159,24 @@ export function createS3Client(env: AppEnv) {
   };
 }
 
-export type S3Integration = ReturnType<typeof createS3Client>;
-
 // ─── Redis client ─────────────────────────────────────────────────────────────
 
-export function createRedis(env: AppEnv) {
+type RedisClient = ReturnType<typeof createRedisClient>;
+
+export interface RedisIntegration {
+  raw: RedisClient;
+  get: (key: string) => Promise<string | null>;
+  set: (key: string, value: string, ttlSeconds?: number) => Promise<unknown>;
+  del: (key: string) => Promise<number>;
+  publish: (channel: string, message: string) => Promise<number>;
+  subscribe: (channel: string, handler: (message: string) => void) => Promise<void>;
+  healthCheck: () => Promise<true>;
+}
+
+export function createRedis(env: AppEnv): RedisIntegration {
   const client = createRedisClient({
     url: env.REDIS_URL,
-    socket: { connectTimeout: 5_000, commandTimeout: 5_000 },
+    socket: { connectTimeout: 5_000 },
   });
   const breaker = createBreaker("redis");
 
@@ -186,8 +200,6 @@ export function createRedis(env: AppEnv) {
       breaker(() => withTimeout(client.ping().then(() => true as const), 3_000, "redis.health")),
   };
 }
-
-export type RedisIntegration = ReturnType<typeof createRedis>;
 
 // ─── Integration container ────────────────────────────────────────────────────
 
