@@ -10,9 +10,9 @@ interface FileUploadProps {
 
 interface UploadState {
   status: "idle" | "dragging" | "uploading" | "done" | "error";
-  filename?: string;
-  fileId?: string;
-  error?: string;
+  filename?: string | undefined;
+  fileId?: string | undefined;
+  error?: string | undefined;
 }
 
 const MAX_SIZE_BYTES = 100 * 1024 * 1024; // 100MB — mirrors contracts

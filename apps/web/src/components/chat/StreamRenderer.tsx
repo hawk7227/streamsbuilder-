@@ -29,8 +29,8 @@ interface QueueJob {
   jobId: string;
   queue: string;
   jobType: string;
-  percent?: number;
-  message?: string;
+  percent?: number | undefined;
+  message?: string | undefined;
 }
 
 interface Artifact {

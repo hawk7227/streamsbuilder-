@@ -17,7 +17,7 @@ interface Message {
   id: string;
   role: "user" | "assistant";
   content: string;
-  runId?: string;
+  runId?: string | undefined;
 }
 
 type PanelView = "activity" | "files" | "preview";

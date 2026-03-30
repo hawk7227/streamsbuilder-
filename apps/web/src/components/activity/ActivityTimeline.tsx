@@ -6,7 +6,7 @@ interface TimelineEntry {
   id: string;
   type: "phase" | "tool" | "job" | "artifact" | "error";
   label: string;
-  detail?: string;
+  detail?: string | undefined;
   status: "active" | "ok" | "error" | "waiting";
   timestamp: string;
 }
