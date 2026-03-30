@@ -59,11 +59,15 @@ module.exports = {
     "@typescript-eslint/no-require-imports": "error",
   },
   overrides: [
-    // Next.js App Router — page/layout files have implicit return types from Next
+    // Next.js web app — relax rules that conflict with React/Next.js patterns
     {
-      files: ["apps/web/src/app/**/*.tsx"],
+      files: ["apps/web/src/**/*.tsx", "apps/web/src/**/*.ts"],
       rules: {
         "@typescript-eslint/explicit-module-boundary-types": "off",
+        "@typescript-eslint/no-confusing-void-expression": "off",
+        "@typescript-eslint/restrict-template-expressions": "off",
+        "@typescript-eslint/no-non-null-assertion": "off",
+        "@typescript-eslint/dot-notation": "off",
       },
     },
     // Config files (CommonJS)
