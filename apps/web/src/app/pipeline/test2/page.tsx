@@ -66,9 +66,38 @@ export default function PipelineTest2Page() {
   useEffect(() => registerActivityStreamMiddleware(), []);
 
   const performAction = useCallback((action: Action) => {
-    if (action.type === "save_to_brain") {
-      void fetch("/api/brain", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ type: "decision", content: String(action.payload.content ?? ""), projectId: PROJECT_ID, title: String(action.payload.content ?? "").slice(0, 60) }) });
-      setBrainSaved(true); setTimeout(() => setBrainSaved(false), 2000);
+    switch (action.type) {
+      case "generate_image":
+        void fetch("/api/generate-image", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ prompt: action.payload.prompt ?? "Generate image", mode: "images" }),
+        });
+        break;
+      case "generate_video":
+        void fetch("/api/video/scratch", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ prompt: action.payload.prompt ?? "Generate video" }),
+        });
+        break;
+      case "run_pipeline":
+        void fetch("/api/pipeline/run", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ mode: "runPipeline" }),
+        });
+        break;
+      case "run_step":
+        void fetch("/api/pipeline/run-node", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ type: action.payload.stepId, data: action.payload.data ?? {} }),
+        });
+        break;
+      case "save_to_brain":
+        void fetch("/api/brain", {
+          method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+          body: JSON.stringify({ type: "decision", content: String(action.payload.content ?? ""), projectId: PROJECT_ID, title: String(action.payload.content ?? "").slice(0, 60) }),
+        });
+        setBrainSaved(true); setTimeout(() => setBrainSaved(false), 2000);
+        break;
     }
   }, []);
 

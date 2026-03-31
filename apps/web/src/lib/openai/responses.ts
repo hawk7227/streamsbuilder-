@@ -251,7 +251,7 @@ ${integratedContext}`;
       return `${core}\n\nReturn the artifact directly. One brief intro line, then the output.`;
 
     case 'action':
-      return `${core}\n\nReturn ONLY valid JSON: {"message":"brief human explanation","actions":[{"type":"action_type","payload":{}}]}\nAvailable types: update_prompt, update_settings, update_image_prompt, update_video_prompt, update_strategy_prompt, update_copy_prompt, update_i2v_prompt, update_qa_instruction, generate_image, generate_video, generate_i2v, run_step, run_pipeline, select_concept, approve_output, open_step_config, set_niche, save_to_brain.\nThe message field must be a real sentence, never a status word.`;
+      return `${core}\n\nYou are in ACTION mode. The user wants you to execute something directly.\n\nReturn ONLY valid JSON — no prose, no explanation outside the JSON:\n{"message":"One sentence telling the user what you are doing","actions":[{"type":"action_type","payload":{}}]}\n\nRULES:\n- message must be a real human sentence like "Generating an image of a doctor in a clinic."\n- For image requests: type="generate_image", payload={"prompt":"<full descriptive prompt>"}\n- For video requests: type="generate_video", payload={"prompt":"<full descriptive prompt>"}\n- For pipeline: type="run_pipeline", payload={}\n- For a step: type="run_step", payload={"stepId":"strategy|copy|image|video|validator"}\n- NEVER say you cannot do something — just emit the action.\n- NEVER return prose. ONLY the JSON object.\n\nAvailable types: generate_image, generate_video, generate_i2v, run_pipeline, run_step, select_concept, approve_output, set_niche, save_to_brain, update_image_prompt, update_video_prompt, update_strategy_prompt, update_copy_prompt, update_prompt, update_settings.`;
   }
 }
 
