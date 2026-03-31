@@ -322,8 +322,21 @@ export async function POST(request: Request): Promise<Response> {
 
   const isInternal = !!request.headers.get("x-probe-origin");
   if (!isInternal) {
-    const auth = request.headers.get("authorization");
-    if (!auth?.startsWith("Bearer ")) {
+    const authHeader = request.headers.get("authorization");
+    if (authHeader?.startsWith("Bearer ")) {
+      // Bearer token present — validate it against Supabase (not just check presence)
+      try {
+        const token = authHeader.slice(7);
+        const { createClient: makeClient } = await import("@supabase/supabase-js");
+        const sb = makeClient(
+          process.env.NEXT_PUBLIC_SUPABASE_URL ?? "",
+          process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "",
+        );
+        const { data: { user }, error } = await sb.auth.getUser(token);
+        if (!user || error) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
+    } else {
+      // No bearer token — fall back to cookie-based session auth
       try {
         const { createClient } = await import("@/lib/supabase/server");
         const supabase = await createClient();
