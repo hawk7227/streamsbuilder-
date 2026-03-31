@@ -112,27 +112,65 @@ export function useActivityStream() {
 // ── ActivityStreamBar component ───────────────────────────────────────────────
 // Mounts inside the assistant panel, above the voice bar.
 // Always visible — idle state shows "Ready", active state shows branded activity.
+// After a response completes, briefly glows green before fading to dim.
+
+const READY_GLOW_MS = 2200; // how long the green "Ready" glow lasts after completion
 
 export function ActivityStreamBar() {
-  const { current, isActive } = useActivityStream();
+  const { current, isActive, history } = useActivityStream();
+  const [justCompleted, setJustCompleted] = useState(false);
+  const glowTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Watch for transitions from active → idle — trigger glow
+  useEffect(() => {
+    if (!isActive && history.length > 0) {
+      const last = history[history.length - 1];
+      if (last?.phase === 'completed') {
+        setJustCompleted(true);
+        if (glowTimer.current) clearTimeout(glowTimer.current);
+        glowTimer.current = setTimeout(() => setJustCompleted(false), READY_GLOW_MS);
+      }
+    }
+    return () => {
+      if (glowTimer.current) clearTimeout(glowTimer.current);
+    };
+  }, [isActive, history]);
 
   if (!isActive || !current) {
+    const lit = justCompleted;
     return (
       <div style={{
         margin: '0 12px 0',
         padding: '5px 10px',
         borderRadius: 8,
-        background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.06)',
+        background: lit ? 'rgba(52,211,153,0.08)' : 'rgba(255,255,255,0.03)',
+        border: lit ? '1px solid rgba(52,211,153,0.35)' : '1px solid rgba(255,255,255,0.06)',
         display: 'flex',
         alignItems: 'center',
         justifyContent: 'space-between',
         gap: 8,
+        transition: 'background 400ms, border-color 400ms',
       }}>
-        <span style={{ fontSize: 10, fontWeight: 600, color: 'rgba(103,232,249,0.5)', letterSpacing: '0.08em' }}>
+        <span style={{
+          fontSize: 10, fontWeight: 600, letterSpacing: '0.08em',
+          color: lit ? '#6ee7b7' : 'rgba(103,232,249,0.5)',
+          transition: 'color 400ms',
+        }}>
           STREAMS Response Engine
         </span>
-        <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.25)' }}>Ready</span>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <span style={{
+            fontSize: 10,
+            color: lit ? '#6ee7b7' : 'rgba(255,255,255,0.25)',
+            transition: 'color 400ms',
+          }}>Ready</span>
+          {/* Solid green dot when lit, dim dot when idle */}
+          <span style={{
+            width: 6, height: 6, borderRadius: '50%',
+            background: lit ? '#34d399' : 'rgba(255,255,255,0.15)',
+            transition: 'background 400ms',
+          }} />
+        </div>
       </div>
     );
   }
