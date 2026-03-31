@@ -51,16 +51,33 @@ export async function generateImageCandidatesFromProvider(params: {
   }));
 }
 
+/**
+ * generateVideoCandidatesFromProvider
+ *
+ * Real I2V implementation — delegates to lib/ai/index.ts which routes
+ * to KlingProvider (image2video) or RunwayProvider (i2v) based on
+ * AI_PROVIDER_I2V env var. Default: kling.
+ *
+ * Polls each submission to completion before returning.
+ * Use pipeline-execution.ts handleVideo() for the full QC pipeline.
+ * This function is the direct provider adapter for callers that need
+ * VideoCandidate[] synchronously (e.g. one-off generation requests).
+ */
 export async function generateVideoCandidatesFromProvider(params: {
   sourceImageUrl: string;
   attempts: number;
 }): Promise<VideoCandidate[]> {
-  const motionPolicy = getVideoMotionPolicy();
-  return Array.from({ length: params.attempts }).map((_, index) => ({
-    id: `vid-${Date.now()}-${index}`,
-    url: params.sourceImageUrl,
-    sourceImageUrl: params.sourceImageUrl,
-    promptUsed: `Animate approved image with policy ${JSON.stringify(motionPolicy)}`,
-    attempt: index + 1,
-  }));
+  const { generateRealVideoCandidate } = await import("./videoProvider");
+  const results = await Promise.allSettled(
+    Array.from({ length: params.attempts }, (_, i) =>
+      generateRealVideoCandidate(params.sourceImageUrl, i + 1)
+    )
+  );
+  const successful = results
+    .filter((r): r is PromiseFulfilledResult<VideoCandidate> => r.status === "fulfilled")
+    .map(r => r.value);
+  if (successful.length === 0) {
+    throw new Error("All I2V candidate submissions failed — check KLING_API_KEY and KLING_ASSESS_API_KEY");
+  }
+  return successful;
 }
