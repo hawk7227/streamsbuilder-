@@ -126,7 +126,7 @@ export async function POST(request: Request) {
     async start(controller) {
       const close = () => { try { controller.close(); } catch { /* already closed */ } };
 
-      // Phase 1: Auth
+      // Phase 1: Auth — try cookie session, then bearer token, then allow anonymous
       emit(controller, { type: 'phase', phase: 'starting', label: 'Starting secure session...' });
 
       let user: User | null = null;
@@ -144,18 +144,15 @@ export async function POST(request: Request) {
         } catch { /* non-fatal */ }
       }
 
-      if (!user) {
-        emit(controller, { type: 'error', message: 'Unauthorized' });
-        close();
-        return;
-      }
+      // Allow unauthenticated access — workspace/conversation features
+      // are skipped for anonymous users, LLM call proceeds regardless.
 
       // Phase 2: Context
       emit(controller, { type: 'phase', phase: 'reviewing_context', label: 'Reviewing context...' });
 
       const admin = createAdminClient();
       let workspaceId: string | undefined = (requestContext as AssistantRequestContext | undefined)?.workspaceId;
-      if (!workspaceId) {
+      if (!workspaceId && user) {
         try {
           const selection = await getCurrentWorkspaceSelection(admin, user);
           workspaceId = selection.current.workspace.id;
@@ -171,7 +168,7 @@ export async function POST(request: Request) {
       emit(controller, { type: 'phase', phase: 'planning', label: 'Preparing the best path...' });
 
       let conversationId: string | undefined;
-      try { conversationId = await ensureConversation(admin, user.id, incomingConvId, userText); }
+      try { conversationId = user ? await ensureConversation(admin, user.id, incomingConvId, userText) : undefined; }
       catch { conversationId = undefined; }
 
       if (conversationId) emit(controller, { type: 'conversation_id', conversationId });

@@ -405,7 +405,7 @@ export default function ChatPage() {
               )}
               {sidebarView === "search" && (
                 <div>
-                  <input type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search conversations…" autoFocus
+                  <input id="conversation-search" name="conversation-search" type="search" value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} placeholder="Search conversations…" autoFocus
                     style={{ width: "100%", padding: "8px 12px", borderRadius: 10, border: "1px solid rgba(255,255,255,0.1)", background: "rgba(255,255,255,0.05)", color: "#fff", fontSize: 13, outline: "none", marginBottom: 8, boxSizing: "border-box" }} />
                   {searchLoading && <p style={{ fontSize: 12, color: "rgba(255,255,255,0.25)", padding: "8px 12px", margin: 0 }}>Searching…</p>}
                   {!searchLoading && searchResults.map((c) => <ConvItem key={c.id} conv={c} />)}
@@ -519,6 +519,8 @@ export default function ChatPage() {
             <button type="button" onClick={() => setAttachmentOpen((o) => !o)}
               style={{ width: 36, height: 36, borderRadius: "50%", flexShrink: 0, marginBottom: 4, border: attachmentOpen ? "1px solid rgba(103,232,249,0.4)" : "1px solid rgba(255,255,255,0.15)", background: attachmentOpen ? "rgba(103,232,249,0.1)" : "rgba(255,255,255,0.06)", color: attachmentOpen ? "#67e8f9" : "rgba(255,255,255,0.6)", fontSize: 18, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center" }}>+</button>
             <textarea
+              id="chat-input"
+              name="chat-input"
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); void sendMessage(input); } }}
