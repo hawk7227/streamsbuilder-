@@ -251,10 +251,55 @@ export default function AIAssistant(props: AIAssistantProps) {
       case 'update_copy_prompt': props.onUpdateCopyPrompt?.(String(action.payload.value ?? '')); break;
       case 'update_i2v_prompt': props.onUpdateI2VPrompt?.(String(action.payload.value ?? '')); break;
       case 'update_qa_instruction': props.onUpdateQAInstruction?.(String(action.payload.value ?? '')); break;
-      case 'generate_image': props.onGenerateImage?.(action.payload.conceptId as string | undefined, action.payload.prompt as string | undefined); break;
-      case 'generate_video': props.onGenerateVideo?.(action.payload.conceptId as string | undefined, action.payload.prompt as string | undefined); break;
-      case 'run_pipeline': props.onRunPipeline?.(); break;
-      case 'run_step': props.onRunStep?.(String(action.payload.stepId ?? ''), action.payload.data as Record<string, unknown> | undefined); break;
+      case 'generate_image':
+        if (props.onGenerateImage) {
+          props.onGenerateImage(action.payload.conceptId as string | undefined, action.payload.prompt as string | undefined);
+        } else {
+          // No parent handler wired — call API directly
+          void fetch('/api/generate-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ prompt: action.payload.prompt ?? 'Generate image', mode: 'images' }),
+          });
+        }
+        break;
+      case 'generate_video':
+        if (props.onGenerateVideo) {
+          props.onGenerateVideo(action.payload.conceptId as string | undefined, action.payload.prompt as string | undefined);
+        } else {
+          void fetch('/api/video/scratch', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ prompt: action.payload.prompt ?? 'Generate video' }),
+          });
+        }
+        break;
+      case 'run_pipeline':
+        if (props.onRunPipeline) {
+          props.onRunPipeline();
+        } else {
+          void fetch('/api/pipeline/run', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ mode: 'runPipeline' }),
+          });
+        }
+        break;
+      case 'run_step':
+        if (props.onRunStep) {
+          props.onRunStep(String(action.payload.stepId ?? ''), action.payload.data as Record<string, unknown> | undefined);
+        } else {
+          void fetch('/api/pipeline/run-node', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include',
+            body: JSON.stringify({ type: action.payload.stepId, data: action.payload.data ?? {} }),
+          });
+        }
+        break;
       case 'select_concept': props.onSelectConcept?.(String(action.payload.conceptId ?? '')); break;
       case 'approve_output': props.onApproveOutput?.(String(action.payload.type ?? ''), String(action.payload.url ?? '')); break;
       case 'open_step_config': props.onOpenStepConfig?.(String(action.payload.stepId ?? '')); break;
