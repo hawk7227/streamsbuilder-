@@ -9,7 +9,7 @@ export interface PlatformViewerProps {
   viewId: ViewId;
   imageUrl: string | null;
   videoUrl: string | null;
-  vidRef?: React.RefObject<HTMLVideoElement | null>;
+  vidRef?: React.RefObject<HTMLVideoElement>;
   conceptId: string;
   nicheId: string;
   copyOutput?: string;
@@ -43,7 +43,7 @@ function WireframeBar({ label, height, position }: { label: string; height: numb
 function ContentLayer({ imageUrl, videoUrl, vidRef, objectFit = 'cover' }: {
   imageUrl: string | null;
   videoUrl: string | null;
-  vidRef?: React.RefObject<HTMLVideoElement | null>;
+  vidRef?: React.RefObject<HTMLVideoElement>;
   objectFit?: 'cover' | 'contain';
 }) {
   if (videoUrl) {
