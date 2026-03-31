@@ -556,16 +556,43 @@ export function checkImagePositiveAnchorsPresent(prompt: string): {
  * A result with skipped=true means OCR was unavailable — do not auto-approve.
  */
 export async function scanImageForText(imageUrl: string): Promise<OcrScanResult> {
-  // In production this would call a real OCR endpoint.
-  // We implement the contract here — the real provider is injected at runtime.
-  // Returning skipped=true forces the caller to flag for human review rather than auto-pass.
-  if (!imageUrl || imageUrl.startsWith('http') === false) {
+  if (!imageUrl || !imageUrl.startsWith('http')) {
     return { hasText: false, textFound: [], confidence: 'low', skipped: true }
   }
-
-  // Placeholder: real implementation would call vision API
-  // For now: skipped=true — pipeline will flag for human review
-  return { hasText: false, textFound: [], confidence: 'low', skipped: true }
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) {
+    return { hasText: false, textFound: [], confidence: 'low', skipped: true }
+  }
+  try {
+    const res = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      signal: AbortSignal.timeout(10_000),
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        max_tokens: 150,
+        messages: [{
+          role: 'user',
+          content: [
+            { type: 'text', text: 'Does this image contain any visible text, words, numbers, captions, watermarks, or overlays? Reply only with valid JSON: {"hasText": boolean, "textFound": string[], "confidence": "high"|"medium"|"low"}' },
+            { type: 'image_url', image_url: { url: imageUrl, detail: 'low' } },
+          ],
+        }],
+      }),
+    });
+    if (!res.ok) return { hasText: false, textFound: [], confidence: 'low', skipped: true }
+    const data = await res.json() as { choices: Array<{ message: { content: string } }> };
+    const raw = data.choices?.[0]?.message?.content?.trim() ?? '{}';
+    const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim()) as { hasText?: boolean; textFound?: string[]; confidence?: string };
+    return {
+      hasText: parsed.hasText ?? false,
+      textFound: parsed.textFound ?? [],
+      confidence: (parsed.confidence as 'high' | 'medium' | 'low') ?? 'medium',
+      skipped: false,
+    };
+  } catch {
+    return { hasText: false, textFound: [], confidence: 'low', skipped: true }
+  }
 }
 
 // ─── Video URL Validation ─────────────────────────────────────────────────────
