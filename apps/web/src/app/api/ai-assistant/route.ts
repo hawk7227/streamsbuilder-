@@ -11,6 +11,15 @@ import type { BuilderVerifierBotPayload } from '@/lib/verifier/types';
 import type { User } from '@supabase/supabase-js';
 
 export const maxDuration = 60;
+export const dynamic = 'force-dynamic';
+
+function tryCreateAdminClient(): ReturnType<typeof createAdminClient> | null {
+  try {
+    return createAdminClient();
+  } catch {
+    return null;
+  }
+}
 
 function sse(data: unknown): string {
   return `data: ${JSON.stringify(data)}\n\n`;
@@ -150,9 +159,9 @@ export async function POST(request: Request) {
       // Phase 2: Context
       emit(controller, { type: 'phase', phase: 'reviewing_context', label: 'Reviewing context...' });
 
-      const admin = createAdminClient();
+      const admin = tryCreateAdminClient();
       let workspaceId: string | undefined = (requestContext as AssistantRequestContext | undefined)?.workspaceId;
-      if (!workspaceId && user) {
+      if (!workspaceId && user && admin) {
         try {
           const selection = await getCurrentWorkspaceSelection(admin, user);
           workspaceId = selection.current.workspace.id;
@@ -168,7 +177,7 @@ export async function POST(request: Request) {
       emit(controller, { type: 'phase', phase: 'planning', label: 'Preparing the best path...' });
 
       let conversationId: string | undefined;
-      try { conversationId = user ? await ensureConversation(admin, user.id, incomingConvId, userText) : undefined; }
+      try { conversationId = user && admin ? await ensureConversation(admin, user.id, incomingConvId, userText) : undefined; }
       catch { conversationId = undefined; }
 
       if (conversationId) emit(controller, { type: 'conversation_id', conversationId });
@@ -188,7 +197,7 @@ export async function POST(request: Request) {
         const summary = probeData
           ? `Verification run ${probeData.runId}: ${probeData.summary.fullyVerified} verified, ${probeData.summary.failed} failed`
           : 'Verification failed — /api/verify error';
-        if (conversationId) persistExchange(admin, conversationId, userText, summary, 'probe').catch(() => {});
+        if (conversationId && admin) persistExchange(admin, conversationId, userText, summary, 'probe').catch(() => {});
         return;
       }
 
@@ -207,7 +216,7 @@ export async function POST(request: Request) {
         : (process.env.OPENAI_API_KEY ?? '');
 
       if (!apiKey) {
-        emit(controller, { type: 'error', message: 'Missing API key' });
+        emit(controller, { type: 'error', message: 'Missing model API key. Set OPENAI_API_KEY for gpt-* models or ANTHROPIC_API_KEY for claude-* models.' });
         close();
         return;
       }
@@ -225,7 +234,7 @@ export async function POST(request: Request) {
           for (const action of finalResponse.actions) emit(controller, { type: 'action', action });
           emit(controller, { type: 'done', mode });
           close();
-          if (conversationId) persistExchange(admin, conversationId, userText, finalResponse.message, activeModel).catch(() => {});
+          if (conversationId && admin) persistExchange(admin, conversationId, userText, finalResponse.message, activeModel).catch(() => {});
           return;
         }
 
@@ -300,7 +309,7 @@ export async function POST(request: Request) {
         if (blocking) emit(controller, { type: 'error', message: blocking.message });
         emit(controller, { type: 'done', mode, ledger });
         close();
-        if (conversationId) persistExchange(admin, conversationId, userText, fullText, activeModel).catch(() => {});
+        if (conversationId && admin) persistExchange(admin, conversationId, userText, fullText, activeModel).catch(() => {});
       } catch (error) {
         emit(controller, { type: 'error', message: error instanceof Error ? error.message : String(error) });
         close();
