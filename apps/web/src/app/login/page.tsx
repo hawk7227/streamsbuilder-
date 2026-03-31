@@ -2,12 +2,12 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 
-export default function LoginPage() {
+function LoginPageInner() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginMethod, setLoginMethod] = useState<"password" | "otp">("password");
@@ -17,14 +17,18 @@ export default function LoginPage() {
   const [otp, setOtp] = useState("");
   const supabase = createClient();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { user } = useAuth();
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://coral-app-rpgt7.ondigitalocean.app/").replace(/\/$/, "");
 
+  // Redirect destination — respect ?next= from middleware, default to /chat
+  const nextPath = searchParams.get("next") ?? "/chat";
+
   useEffect(() => {
     if (user) {
-      router.push("/dashboard");
+      router.push(nextPath);
     }
-  }, [user, router]);
+  }, [user, router, nextPath]);
 
   const handleOAuthLogin = async (provider: "google" | "github") => {
     setIsLoading(true);
@@ -63,7 +67,7 @@ export default function LoginPage() {
       setError(error.message);
       setIsLoading(false);
     } else if (data.session) {
-      router.push("/dashboard");
+      router.push(nextPath);
     } else {
       setError("Failed to sign in. Please try again.");
       setIsLoading(false);
@@ -112,7 +116,7 @@ export default function LoginPage() {
       setError(error.message);
       setIsLoading(false);
     } else {
-      router.push("/dashboard");
+      router.push(nextPath);
     }
   };
 
@@ -572,5 +576,13 @@ export default function LoginPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginPageInner />
+    </Suspense>
   );
 }
