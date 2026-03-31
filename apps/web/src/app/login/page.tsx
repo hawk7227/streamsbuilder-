@@ -2,12 +2,12 @@
 export const dynamic = "force-dynamic";
 
 import Link from "next/link";
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { useRouter, useSearchParams } from "next/navigation";
+import { useRouter } from "next/navigation";
 import { useAuth } from "@/contexts/AuthContext";
 
-function LoginPageInner() {
+export default function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loginMethod, setLoginMethod] = useState<"password" | "otp">("password");
@@ -17,18 +17,14 @@ function LoginPageInner() {
   const [otp, setOtp] = useState("");
   const supabase = createClient();
   const router = useRouter();
-  const searchParams = useSearchParams();
   const { user } = useAuth();
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://coral-app-rpgt7.ondigitalocean.app/").replace(/\/$/, "");
 
-  // Redirect destination — respect ?next= from middleware, default to /chat
-  const nextPath = searchParams.get("next") ?? "/chat";
-
   useEffect(() => {
     if (user) {
-      router.push(nextPath);
+      router.push("/chat");
     }
-  }, [user, router, nextPath]);
+  }, [user, router]);
 
   const handleOAuthLogin = async (provider: "google" | "github") => {
     setIsLoading(true);
@@ -67,7 +63,7 @@ function LoginPageInner() {
       setError(error.message);
       setIsLoading(false);
     } else if (data.session) {
-      router.push(nextPath);
+      router.push("/chat");
     } else {
       setError("Failed to sign in. Please try again.");
       setIsLoading(false);
@@ -116,7 +112,7 @@ function LoginPageInner() {
       setError(error.message);
       setIsLoading(false);
     } else {
-      router.push(nextPath);
+      router.push("/chat");
     }
   };
 
@@ -579,10 +575,3 @@ function LoginPageInner() {
   );
 }
 
-export default function LoginPage() {
-  return (
-    <Suspense>
-      <LoginPageInner />
-    </Suspense>
-  );
-}

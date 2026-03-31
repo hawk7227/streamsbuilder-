@@ -28,11 +28,13 @@ function SignupForm() {
   const { user, updateProfile } = useAuth();
   const appUrl = (process.env.NEXT_PUBLIC_APP_URL || "https://coral-app-rpgt7.ondigitalocean.app/").replace(/\/$/, "");
 
+  const nextPath = "/chat";
+
   useEffect(() => {
     if (user) {
-      router.push("/dashboard");
+      router.push(nextPath);
     }
-  }, [user, router]);
+  }, [user, router, nextPath]);
 
   const handleOAuthSignup = async (provider: "google" | "github") => {
     setIsLoading(true);
@@ -181,7 +183,7 @@ function SignupForm() {
           }
 
           // Agency invitation handled, proceed to dashboard
-          router.push("/dashboard");
+          router.push(nextPath);
           return;
         } catch (error) {
           setError("Failed to accept agency invitation. Please try again.");
@@ -215,7 +217,7 @@ function SignupForm() {
         }
 
         // Workspace created successfully, proceed to dashboard
-        router.push("/dashboard");
+        router.push(nextPath);
       } catch (error) {
         setError("Failed to create workspace. Please try again.");
         setIsLoading(false);
