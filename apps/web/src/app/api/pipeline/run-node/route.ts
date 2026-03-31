@@ -3,10 +3,13 @@ import { createClient } from "@/lib/supabase/server";
 import { executeNode, executePipeline } from "../../../../lib/pipeline/pipeline-execution";
 
 export async function POST(request: NextRequest) {
-  // Auth gate — pipeline execution calls AI providers and costs money
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  // Auth gate — accept cookie session OR internal tool call from streams-assistant
+  const isInternalCall = request.headers.get("x-streams-tool-call") === "1";
+  if (!isInternalCall) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
+  }
 
   try {
     const body = (await request.json()) as {

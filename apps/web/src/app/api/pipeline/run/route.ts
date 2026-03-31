@@ -6,10 +6,13 @@ import type { IntakeBrief } from "../../../../lib/media-realism/types";
 export const maxDuration = 300;
 
 export async function POST(request: NextRequest) {
-  // Auth gate
-  const supabase = await createClient();
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  // Auth gate — accept cookie session OR internal tool call from streams-assistant
+  const isInternalCall = request.headers.get("x-streams-tool-call") === "1";
+  if (!isInternalCall) {
+    const supabase = await createClient();
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
 
   let body: { mode?: "runPipeline" | "runStep"; step?: string; payload?: Record<string, unknown> };
   try {

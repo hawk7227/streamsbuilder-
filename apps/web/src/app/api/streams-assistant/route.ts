@@ -72,12 +72,12 @@ async function executeTool(name: string, args: Record<string,unknown>, ctx: Full
         return d.error?`Error: ${d.error}`:JSON.stringify({status:d.data?.status,url:d.data?.output_url,id:d.data?.id});
       }
       case "run_pipeline": {
-        const r = await fetch(`${base}/api/pipeline/run`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({mode:"runPipeline",payload:args.payload??ctx})});
+        const r = await fetch(`${base}/api/pipeline/run`,{method:"POST",headers:{"Content-Type":"application/json","x-streams-tool-call":"1","x-streams-user-id":userId},body:JSON.stringify({mode:"runPipeline",payload:args.payload??ctx})});
         const d = await r.json() as Record<string,unknown>;
         return JSON.stringify(d);
       }
       case "run_step": {
-        const r = await fetch(`${base}/api/pipeline/run-node`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:args.stepId,data:args.data??{},context:ctx})});
+        const r = await fetch(`${base}/api/pipeline/run-node`,{method:"POST",headers:{"Content-Type":"application/json","x-streams-tool-call":"1","x-streams-user-id":userId},body:JSON.stringify({type:args.stepId,data:args.data??{},context:ctx})});
         return JSON.stringify(await r.json());
       }
       case "read_pipeline_state": {

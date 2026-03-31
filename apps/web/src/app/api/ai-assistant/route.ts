@@ -195,9 +195,13 @@ export async function POST(request: Request) {
       // Phase 4: Model call — emit understanding phase BEFORE the blocking fetch
       emit(controller, { type: 'phase', phase: 'understanding_request', label: 'Understanding your request...' });
 
-      const activeModel = clientModel || 'gpt-4o';
+      // Resolve model: explicit clientModel wins, then provider default, then gpt-4o
+      const contextProvider = (context as Record<string, unknown>)?.['provider'] as string | undefined;
+      const activeModel = clientModel
+        || (contextProvider === 'anthropic' ? 'claude-sonnet-4-20250514' : undefined)
+        || 'gpt-4o';
       const provider = getProviderConfig(activeModel);
-      // Use the correct API key based on provider
+      // Use the correct API key based on resolved model
       const apiKey = activeModel.startsWith('claude-')
         ? (process.env.ANTHROPIC_API_KEY ?? '')
         : (process.env.OPENAI_API_KEY ?? '');

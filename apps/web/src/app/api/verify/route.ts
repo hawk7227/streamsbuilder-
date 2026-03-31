@@ -334,10 +334,10 @@ export async function POST(request: Request): Promise<Response> {
   const runId = `verify_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
 
   const isInternal = !!request.headers.get("x-probe-origin");
+  let verifyUserId = "system";
   if (!isInternal) {
     const authHeader = request.headers.get("authorization");
     if (authHeader?.startsWith("Bearer ")) {
-      // Bearer token present — validate it against Supabase (not just check presence)
       try {
         const token = authHeader.slice(7);
         const sb = createSupabaseClient(
@@ -346,13 +346,14 @@ export async function POST(request: Request): Promise<Response> {
         );
         const { data: { user }, error } = await sb.auth.getUser(token);
         if (!user || error) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        verifyUserId = user.id;
       } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
     } else {
-      // No bearer token — fall back to cookie-based session auth
       try {
         const supabase = await createClient();
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+        verifyUserId = user.id;
       } catch { return NextResponse.json({ error: "Unauthorized" }, { status: 401 }); }
     }
   }
@@ -412,7 +413,7 @@ export async function POST(request: Request): Promise<Response> {
 
   try {
     const admin = createAdminClient();
-    await admin.from("assistant_memory").insert({ user_id: "00000000-0000-0000-0000-000000000000", memory_type: "pipeline_run", key: runId, value: { runId, environment, overallStatus, summary: payload.summary, failedFeatures: summaries.filter((f) => f.finalStatus !== "pass").map((f) => ({ featureId: f.featureId, badge: f.uiBadge, criticalFailures: f.criticalFailures })), repairProposalsCount: repairPlan.proposals.length, startedAt, finishedAt }, tags: ["verification", featureKey, `status:${overallStatus}`] });
+    await admin.from("assistant_memory").insert({ user_id: verifyUserId, memory_type: "pipeline_run", key: runId, value: { runId, environment, overallStatus, summary: payload.summary, failedFeatures: summaries.filter((f) => f.finalStatus !== "pass").map((f) => ({ featureId: f.featureId, badge: f.uiBadge, criticalFailures: f.criticalFailures })), repairProposalsCount: repairPlan.proposals.length, startedAt, finishedAt }, tags: ["verification", featureKey, `status:${overallStatus}`] });
   } catch { /* non-fatal */ }
 
   return NextResponse.json(payload);

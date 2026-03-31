@@ -39,7 +39,7 @@ export async function POST(request: Request) {
     .from('assistant_memory')
     .insert({
       user_id: user.id,
-      conversation_id: conversationId,
+      ...(conversationId ? { conversation_id: conversationId } : {}),
       memory_type: memoryType,
       key: title || `${memoryType}_${Date.now()}`,
       value: { title, content, projectId },

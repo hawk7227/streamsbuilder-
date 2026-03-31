@@ -13,7 +13,7 @@ interface ContentBlock { type: string; text?: string; image_url?: { url: string 
 interface OAIToolCall { id: string; type: "function"; function: { name: string; arguments: string }; }
 interface FullContext {
   type: string; prompt: string; settings: Record<string,string>;
-  provider?: "openai"|"anthropic"; conversationId?: string;
+  provider?: "openai"|"anthropic"; model?: string; conversationId?: string;
   pipelineName?: string; nicheId?: string; pipelineMode?: string; outputMode?: string;
   pipelineRunning?: boolean;
   steps?: Array<{id:string;name:string;state:string;error?:string|null}>;
@@ -73,7 +73,7 @@ async function executeTool(name: string, args: Record<string,unknown>, ctx: Full
       }
       case "run_pipeline": return JSON.stringify({action:"run_pipeline",message:"Triggered via UI callback"});
       case "run_step": {
-        const r = await fetch(`${base}/api/pipeline/run-node`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({type:args.stepId,data:args.data??{},context:ctx})});
+        const r = await fetch(`${base}/api/pipeline/run-node`,{method:"POST",headers:{"Content-Type":"application/json","x-streams-tool-call":"1","x-streams-user-id":userId},body:JSON.stringify({type:args.stepId,data:args.data??{},context:ctx})});
         return JSON.stringify(await r.json());
       }
       case "read_pipeline_state": {
@@ -230,7 +230,7 @@ export async function POST(req: Request): Promise<Response> {
         let i=0;
         while(i++<10){
           if(prov==="openai"){
-            const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{Authorization:`Bearer ${ok}`,"Content-Type":"application/json"},body:JSON.stringify({model:"gpt-4o",messages:loop,tools:TOOLS,tool_choice:"auto",temperature:0.4,max_tokens:1200})});
+            const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{Authorization:`Bearer ${ok}`,"Content-Type":"application/json"},body:JSON.stringify({model:context.model??(prov==="openai"?"gpt-4o":undefined),messages:loop,tools:TOOLS,tool_choice:"auto",temperature:0.4,max_tokens:1200})});
             if(!r.ok){const e=await r.json().catch(()=>({})) as{error?:{message:string}};emit("error",{message:`OpenAI: ${e.error?.message??r.status}`});break;}
             const d=await r.json() as{choices:[{message:{content?:string;tool_calls?:OAIToolCall[]};finish_reason:string}]};
             const msg=d.choices[0].message;
@@ -254,7 +254,7 @@ export async function POST(req: Request): Promise<Response> {
           }
           if(prov==="anthropic"){
             const am=loop.filter(m=>m.role!=="system").map(m=>({role:m.role==="tool"?"user":m.role,content:m.content}));
-            const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":ak!,"anthropic-version":"2023-06-01","Content-Type":"application/json"},body:JSON.stringify({model:"claude-sonnet-4-20250514",max_tokens:1200,system:sys,messages:am,tools:TOOLS.map(t=>({name:t.function.name,description:t.function.description,input_schema:t.function.parameters}))})});
+            const r=await fetch("https://api.anthropic.com/v1/messages",{method:"POST",headers:{"x-api-key":ak!,"anthropic-version":"2023-06-01","Content-Type":"application/json"},body:JSON.stringify({model:context.model??(prov==="anthropic"?"claude-sonnet-4-20250514":undefined),max_tokens:1200,system:sys,messages:am,tools:TOOLS.map(t=>({name:t.function.name,description:t.function.description,input_schema:t.function.parameters}))})});
             if(!r.ok){const e=await r.json().catch(()=>({})) as{error?:{message:string}};emit("error",{message:`Anthropic: ${e.error?.message??r.status}`});break;}
             const d=await r.json() as{content:Array<{type:string;text?:string;id?:string;name?:string;input?:Record<string,unknown>}>;stop_reason:string};
             let ht=false;
