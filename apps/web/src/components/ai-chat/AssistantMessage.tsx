@@ -4,6 +4,7 @@ import React, { Fragment } from "react";
 import { VerificationBlock } from "./VerificationBlock";
 import { AssistantCodeBlock } from "./AssistantCodeBlock";
 import type { AssistantMode } from "@/lib/enforcement/types";
+import type { BuilderVerifierBotPayload } from "@/lib/verifier/types";
 
 export interface MsgContent {
   type: "text" | "image_url" | "video_url" | "document";
@@ -15,6 +16,7 @@ export interface AssistantMessageShape {
   role: "user" | "assistant" | "system" | "tool";
   content: string | MsgContent[];
   mode?: AssistantMode;
+  verificationPayload?: BuilderVerifierBotPayload;
 }
 
 function splitCodeFence(text: string): Array<{ type: "text" | "code"; value: string; language?: string }> {
@@ -94,7 +96,12 @@ function MarkdownLine({ line, isUser }: { line: string; isUser?: boolean }) {
   return <p style={{ fontSize: 14, lineHeight: 1.65, color, margin: 0 }}><InlineText text={line} /></p>;
 }
 
-function TextBlock({ text, mode, isUser }: { text: string; mode?: AssistantMode; isUser?: boolean }) {
+function TextBlock({ text, mode, isUser, verificationPayload }: { text: string; mode?: AssistantMode; isUser?: boolean; verificationPayload?: BuilderVerifierBotPayload }) {
+  // Structured verification payload — takes priority over legacy text parsing
+  if (verificationPayload) {
+    return <VerificationBlock payload={verificationPayload} />;
+  }
+
   const hasAnyHeader = /VERIFIED:|NOT VERIFIED:|REQUIRES RUNTIME:|RISKS:/i.test(text);
   const isVerification = mode === "verification" || hasAnyHeader;
 
@@ -203,13 +210,13 @@ export function AssistantMessage({ message }: { message: AssistantMessageShape }
         ].join(" ")}
       >
         {typeof message.content === "string" ? (
-          <TextBlock text={message.content} mode={message.mode} isUser={isUser} />
+          <TextBlock text={message.content} mode={message.mode} isUser={isUser} verificationPayload={message.verificationPayload} />
         ) : (
           <div className="grid gap-3">
             {message.content.map((block, index) => (
               <div key={index}>
                 {block.type === "text" && block.text
-                  ? <TextBlock text={block.text} mode={message.mode} isUser={isUser} />
+                  ? <TextBlock text={block.text} mode={message.mode} isUser={isUser} verificationPayload={message.verificationPayload} />
                   : <MediaBlock block={block} />}
               </div>
             ))}

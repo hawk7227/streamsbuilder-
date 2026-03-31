@@ -17,6 +17,7 @@ import type { ArtifactDestination } from "@/components/pipeline/ArtifactCard";
 import { FloatingPreviewPanel } from "@/components/pipeline/FloatingPreviewPanel";
 import { LivePreviewRenderer } from "@/components/pipeline/LivePreviewRenderer";
 import type { AssistantMode } from "@/lib/enforcement/types";
+import type { BuilderVerifierBotPayload } from "@/lib/verifier/types";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -252,6 +253,7 @@ export default function ChatPage() {
       let buffer = "";
       let fullText = "";
       let mode: AssistantMode = "conversation";
+      let verificationPayload: BuilderVerifierBotPayload | undefined = undefined;
 
       while (true) {
         const { value, done } = await reader.read();
@@ -267,6 +269,7 @@ export default function ChatPage() {
             const evt = JSON.parse(line.slice(6)) as {
               type: string; delta?: string; action?: Action; phase?: string;
               label?: string; message?: string; conversationId?: string; mode?: AssistantMode;
+              payload?: BuilderVerifierBotPayload;
             };
 
             if (evt.type === "phase" && evt.phase) {
@@ -274,6 +277,8 @@ export default function ChatPage() {
             } else if (evt.type === "conversation_id" && evt.conversationId) {
               setConversationId(evt.conversationId);
               if (typeof window !== "undefined") localStorage.setItem("streams_conv_id", evt.conversationId);
+            } else if (evt.type === "verification_result" && evt.payload) {
+              verificationPayload = evt.payload;
             } else if (evt.type === "text" && evt.delta) {
               fullText += evt.delta;
               setStreamingText(fullText);
@@ -307,7 +312,10 @@ export default function ChatPage() {
       setMessages((prev) => [...prev, {
         role: "assistant",
         mode,
-        content: [{ type: "text", text: fullText || "Request completed." }, ...detectMedia(fullText)],
+        content: verificationPayload
+          ? [{ type: "text" as const, text: "" }]
+          : [{ type: "text" as const, text: fullText || "Request completed." }, ...detectMedia(fullText)],
+        verificationPayload,
       }]);
       ActivityController.responseCompleted();
       clearAttachments();

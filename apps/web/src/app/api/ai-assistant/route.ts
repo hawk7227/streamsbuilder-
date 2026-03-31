@@ -7,7 +7,7 @@ import { buildIntegratedChatContext } from '@/lib/ai-chat/context/buildIntegrate
 import { runValidators } from '@/lib/enforcement/validatorRunner';
 import { validateChatResponse } from '@/lib/enforcement/validators/chat';
 import type { AssistantRequestContext } from '@/lib/ai-chat/context/types';
-import type { VerifyResponse } from '@/app/api/verify/route';
+import type { BuilderVerifierBotPayload } from '@/lib/verifier/types';
 import type { User } from '@supabase/supabase-js';
 
 export const maxDuration = 60;
@@ -62,9 +62,8 @@ async function persistExchange(
     .eq('id', conversationId);
 }
 
-async function runProbes(requestUrl: string, cookieHeader: string, features: string): Promise<VerifyResponse | null> {
+async function runProbes(requestUrl: string, cookieHeader: string, features: string): Promise<BuilderVerifierBotPayload | null> {
   try {
-    // Use env var first — request.url in DO may be an internal container address
     const origin = process.env['NEXT_PUBLIC_APP_URL']
       ?? (() => { try { return new URL(requestUrl).origin; } catch { return 'http://localhost:3000'; } })();
     const res = await fetch(`${origin}/api/verify`, {
@@ -73,30 +72,9 @@ async function runProbes(requestUrl: string, cookieHeader: string, features: str
       body: JSON.stringify({ features }),
     });
     if (!res.ok) return null;
-    return await res.json() as VerifyResponse;
+    return await res.json() as BuilderVerifierBotPayload;
   } catch { return null; }
 }
-
-function formatProbeResults(data: VerifyResponse): string {
-  const passed = data.results.filter((r) => r.status === 'pass');
-  const failed = data.results.filter((r) => r.status !== 'pass');
-  const lines: string[] = ['VERIFIED:'];
-  if (passed.length === 0) lines.push('- None passed.');
-  else for (const r of passed) lines.push(`- ${r.label} \u2192 HTTP ${r.httpStatus} (${r.durationMs}ms)`);
-  lines.push('', 'NOT VERIFIED:');
-  if (failed.length === 0) lines.push('- All checks passed.');
-  else for (const r of failed) {
-    const status = r.httpStatus !== null ? `HTTP ${r.httpStatus}` : r.status.toUpperCase();
-    lines.push(`- ${r.label} \u2192 ${status}${r.error ? ` \u2014 ${r.error}` : ''}`);
-  }
-  lines.push('', 'REQUIRES RUNTIME:');
-  lines.push(failed.length > 0
-    ? `- ${failed.length} check${failed.length > 1 ? 's' : ''} did not pass. Inspect logs for details.`
-    : '- Nothing \u2014 all routes responded as expected.');
-  lines.push('', `Pass rate: ${data.summary.passRate}% (${data.summary.passed}/${data.summary.total}) \u00b7 Run ID: ${data.runId}`);
-  return lines.join('\n');
-}
-
 function parseStreamingLine(line: string, isAnthropic: boolean): string {
   if (!line.startsWith('data: ')) return '';
   const payload = line.slice(6).trim();
@@ -198,18 +176,22 @@ export async function POST(request: Request) {
 
       if (conversationId) emit(controller, { type: 'conversation_id', conversationId });
 
-      // Probe path — bypass LLM
+      // Probe path — bypass LLM, emit structured verification_result event
       if (shouldRunProbes(userText)) {
         const features = extractFeatureTarget(userText);
-        emit(controller, { type: 'phase', phase: 'validating', label: 'Running live HTTP probes...' });
-        emit(controller, { type: 'text', delta: `Running live HTTP probes (${features === 'all' ? 'all systems' : features})...\n\n` });
+        emit(controller, { type: 'phase', phase: 'validating', label: 'Running live system verification...' });
         const probeData = await runProbes(requestUrl, cookieHeader, features);
-        const fullText = probeData ? formatProbeResults(probeData)
-          : 'VERIFIED:\n- None.\n\nNOT VERIFIED:\n- All routes — /api/verify returned an error.\n\nREQUIRES RUNTIME:\n- Ensure /api/verify is deployed and reachable.';
-        for (let i = 0; i < fullText.length; i += 80) emit(controller, { type: 'text', delta: fullText.slice(i, i + 80) });
+        if (probeData) {
+          emit(controller, { type: 'verification_result', payload: probeData });
+        } else {
+          emit(controller, { type: 'text', delta: 'Verification failed: /api/verify did not respond. Check deployment and env vars.' });
+        }
         emit(controller, { type: 'done', mode: 'verification' });
         close();
-        if (conversationId) persistExchange(admin, conversationId, userText, fullText, 'probe').catch(() => {});
+        const summary = probeData
+          ? `Verification run ${probeData.runId}: ${probeData.summary.fullyVerified} verified, ${probeData.summary.failed} failed`
+          : 'Verification failed — /api/verify error';
+        if (conversationId) persistExchange(admin, conversationId, userText, summary, 'probe').catch(() => {});
         return;
       }
 
